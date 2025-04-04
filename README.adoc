@@ -1,0 +1,5 @@
+
+
+Builds on top of ongoing work in ORM - https://github.com/hibernate/hibernate-orm/pull/9960
+
+Build that PR and publish it to maven local with the version "7.0.0-DROP-HBM"

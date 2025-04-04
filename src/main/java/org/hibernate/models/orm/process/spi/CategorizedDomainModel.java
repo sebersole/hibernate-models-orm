@@ -13,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.hibernate.boot.models.spi.GlobalRegistrations;
+import org.hibernate.boot.models.xml.spi.PersistenceUnitMetadata;
 import org.hibernate.internal.util.IndexedConsumer;
 import org.hibernate.internal.util.KeyedConsumer;
 import org.hibernate.models.spi.ClassDetails;
@@ -31,6 +32,7 @@ public record CategorizedDomainModel(
 		Set<EntityHierarchy> entityHierarchies,
 		Map<String, ClassDetails> mappedSuperclasses,
 		Map<String, ClassDetails> embeddables,
+		PersistenceUnitMetadata persistenceUnitMetadata,
 		GlobalRegistrations globalRegistrations) {
 
 	/**

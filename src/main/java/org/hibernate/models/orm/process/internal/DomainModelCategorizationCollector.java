@@ -17,11 +17,12 @@ import org.hibernate.boot.jaxb.mapping.spi.JaxbEntityListenerContainerImpl;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbEntityMappingsImpl;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbPersistenceUnitDefaultsImpl;
 import org.hibernate.boot.jaxb.mapping.spi.JaxbPersistenceUnitMetadataImpl;
-import org.hibernate.boot.models.internal.GlobalRegistrationsImpl;
+import org.hibernate.boot.models.xml.spi.PersistenceUnitMetadata;
 import org.hibernate.boot.models.xml.spi.XmlDocumentContext;
 import org.hibernate.boot.spi.BootstrapContext;
 import org.hibernate.models.orm.process.spi.CategorizedDomainModel;
 import org.hibernate.models.orm.process.spi.EntityHierarchy;
+import org.hibernate.models.orm.process.spi.ManagedResourcesCategorizer;
 import org.hibernate.models.spi.ClassDetails;
 import org.hibernate.models.spi.SourceModelBuildingContext;
 
@@ -32,12 +33,11 @@ import jakarta.persistence.MappedSuperclass;
 /**
  * In-flight holder for various categorizations of the application's domain model.
  *
- * @see org.hibernate.models.orm.process.spi.ManagedResourcesProcessor#processManagedResources
+ * @see ManagedResourcesCategorizer#categorizeManagedResources
  *
  * @author Steve Ebersole
  */
 public class DomainModelCategorizationCollector {
-	private final boolean areIdGeneratorsGlobal;
 	private final Set<ClassDetails> rootEntities = new HashSet<>();
 	private final Map<String,ClassDetails> mappedSuperclasses = new HashMap<>();
 	private final Map<String,ClassDetails> embeddables = new HashMap<>();
@@ -46,10 +46,8 @@ public class DomainModelCategorizationCollector {
 	private final Set<ClassDetails> processedClasses = new TreeSet<>( Comparator.comparing( ClassDetails::getName ) );
 
 	public DomainModelCategorizationCollector(
-			boolean areIdGeneratorsGlobal,
 			SourceModelBuildingContext modelsContext,
 			BootstrapContext bootstrapContext) {
-		this.areIdGeneratorsGlobal = areIdGeneratorsGlobal;
 		this.globalRegistrations = new GlobalRegistrationsImpl( modelsContext, bootstrapContext );
 	}
 
@@ -93,7 +91,6 @@ public class DomainModelCategorizationCollector {
 		}
 
 		getGlobalRegistrations().collectIdGenerators( jaxbRoot );
-
 		// todo : named queries
 		// todo : named graphs
 	}
@@ -113,11 +110,9 @@ public class DomainModelCategorizationCollector {
 		getGlobalRegistrations().collectEmbeddableInstantiatorRegistrations( classDetails );
 		getGlobalRegistrations().collectFilterDefinitions( classDetails );
 
-		if ( areIdGeneratorsGlobal ) {
-			getGlobalRegistrations().collectIdGenerators( classDetails );
-		}
+		getGlobalRegistrations().collectIdGenerators( classDetails );
+		getGlobalRegistrations().collectQueryReferences( classDetails );
 
-		// todo : named queries
 		// todo : named graphs
 
 		if ( classDetails.hasDirectAnnotationUsage( MappedSuperclass.class ) ) {
@@ -146,11 +141,12 @@ public class DomainModelCategorizationCollector {
 	 * @param entityHierarchies All entity hierarchies defined in the persistence-unit, built based
 	 * on {@linkplain #getRootEntities()}
 	 */
-	public CategorizedDomainModel createResult(Set<EntityHierarchy> entityHierarchies) {
+	public CategorizedDomainModel createResult(Set<EntityHierarchy> entityHierarchies, PersistenceUnitMetadata persistenceUnitMetadata) {
 		return new CategorizedDomainModel(
 				entityHierarchies,
 				mappedSuperclasses,
 				embeddables,
+				persistenceUnitMetadata,
 				getGlobalRegistrations()
 		);
 	}

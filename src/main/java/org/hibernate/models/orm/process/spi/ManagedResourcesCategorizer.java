@@ -42,14 +42,14 @@ import static org.hibernate.models.orm.process.spi.ModelCategorizationLogging.MO
  *
  * @author Steve Ebersole
  */
-public class ManagedResourcesProcessor {
+public class ManagedResourcesCategorizer {
 	/**
 	 * Process the classes, xml, etc. defined by the managed resources and produce
 	 * a {@linkplain CategorizedDomainModel categorized model} of the application's domain model
 	 *
 	 * @param managedResources The classes and mappings of the application's domain model
 	 */
-	public static CategorizedDomainModel processManagedResources(
+	public static CategorizedDomainModel categorizeManagedResources(
 			ManagedResources managedResources,
 			PersistenceUnitMetadata persistenceUnitMetadata,
 			MappingDefaults optionDefaults,
@@ -57,54 +57,18 @@ public class ManagedResourcesProcessor {
 			BootstrapContext bootstrapContext) {
 
 		final SourceModelBuildingContext modelsContext = bootstrapContext.getModelsContext();
-		final ClassLoading classLoading = modelsContext.getClassLoading();
-		final MutableClassDetailsRegistry classDetailsRegistry = modelsContext.getClassDetailsRegistry().as( MutableClassDetailsRegistry.class );
 
-		// NOTE: by side effect, this call triggers changes in `persistenceUnitMetadata`
 		final XmlPreProcessingResult xmlPreProcessingResult = XmlPreProcessor.preProcessXmlResources(
 				managedResources,
 				persistenceUnitMetadata
 		);
 
+		primeClassDetailsRegistry( managedResources, xmlPreProcessingResult, modelsContext, bootstrapContext );
+
 		final DomainModelCategorizationCollector modelCategorizationCollector = new DomainModelCategorizationCollector(
-				// JPA id generator global-ity thing
-				true,
 				modelsContext,
 				bootstrapContext
 		);
-
-		managedResources.getAnnotatedClassReferences().forEach( aClass -> {
-			final ClassDetails classDetails = classDetailsRegistry.resolveClassDetails(
-					aClass.getName(),
-					(name) -> JdkBuilders.buildClassDetailsStatic( aClass, modelsContext )
-			);
-			modelCategorizationCollector.apply( classDetails );
-		} );
-
-		managedResources.getAnnotatedPackageNames().forEach( (packageName) -> {
-			try {
-				final Class<?> packageInfoClass = classLoading.classForName( packageName + ".package-info" );
-				final ClassDetails classDetails = classDetailsRegistry.resolveClassDetails(
-						packageInfoClass.getName(),
-						(name) -> JdkBuilders.buildClassDetailsStatic( packageInfoClass, modelsContext )
-				);
-				modelCategorizationCollector.apply( classDetails );
-			}
-			catch (ClassLoadingException classLoadingException) {
-				// no package-info, so there can be no annotations... just skip it
-			}
-		} );
-
-		managedResources.getAnnotatedClassNames().forEach( (className) -> {
-			final ClassDetails classDetails = classDetailsRegistry.resolveClassDetails( className );
-			modelCategorizationCollector.apply( classDetails );
-		} );
-
-		xmlPreProcessingResult.getMappedClasses().forEach( (className) -> {
-			final ClassDetails classDetails = classDetailsRegistry.resolveClassDetails( className );
-			modelCategorizationCollector.apply( classDetails );
-		} );
-
 
 		final RootMappingDefaults rootMappingDefaults = new RootMappingDefaults(
 				optionDefaults,
@@ -124,6 +88,11 @@ public class ManagedResourcesProcessor {
 
 		// Apply the overrides.
 		xmlProcessingResult.apply();
+
+		// With lots of classes this could become unwieldy.
+		// The alternative is to keep track of "managed classes" and just use those, but that requires some redesign
+		// in XmlProcessor, etc.
+		modelsContext.getClassDetailsRegistry().forEachClassDetails( modelCategorizationCollector::apply );
 
 
 		// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -162,12 +131,44 @@ public class ManagedResourcesProcessor {
 		else {
 			entityHierarchies = createEntityHierarchies(
 					modelCategorizationCollector.getRootEntities(),
-					ManagedResourcesProcessor::ignore,
+					ManagedResourcesCategorizer::ignore,
 					mappingBuildingContext
 			);
 		}
 
-		return modelCategorizationCollector.createResult( entityHierarchies );
+		return modelCategorizationCollector.createResult( entityHierarchies, persistenceUnitMetadata );
+	}
+
+	private static void primeClassDetailsRegistry(
+			ManagedResources managedResources,
+			XmlPreProcessingResult xmlPreProcessingResult,
+			SourceModelBuildingContext modelsContext,
+			BootstrapContext bootstrapContext) {
+		final MutableClassDetailsRegistry classDetailsRegistry = modelsContext.getClassDetailsRegistry().as( MutableClassDetailsRegistry.class );
+
+		managedResources.getAnnotatedClassReferences().forEach( aClass -> {
+			classDetailsRegistry.resolveClassDetails(
+					aClass.getName(),
+					(name) -> JdkBuilders.buildClassDetailsStatic( aClass, modelsContext )
+			);
+		} );
+
+		managedResources.getAnnotatedPackageNames().forEach( (packageName) -> {
+			try {
+				final Class<?> packageInfoClass = modelsContext.getClassLoading().classForName( packageName + ".package-info" );
+				classDetailsRegistry.resolveClassDetails(
+						packageInfoClass.getName(),
+						(name) -> JdkBuilders.buildClassDetailsStatic( packageInfoClass, modelsContext )
+				);
+			}
+			catch (ClassLoadingException classLoadingException) {
+				// no package-info, so there can be no annotations... just skip it
+			}
+		} );
+
+		managedResources.getAnnotatedClassNames().forEach( classDetailsRegistry::resolveClassDetails );
+
+		xmlPreProcessingResult.getMappedClasses().forEach( classDetailsRegistry::resolveClassDetails );
 	}
 
 	private static void ignore(IdentifiableTypeMetadata identifiableTypeMetadata) {
