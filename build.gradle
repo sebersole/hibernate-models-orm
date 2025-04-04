@@ -1,0 +1,61 @@
+plugins {
+    id 'java'
+}
+
+group = 'org.hibernate.models'
+version = '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies {
+    implementation "org.hibernate.orm:hibernate-core:7.0.0-DROP-HBM"
+    implementation libs.hibernateModels
+
+    implementation libs.logging
+
+    compileOnly libs.loggingAnnotations
+
+    annotationProcessor libs.loggingProcessor
+    annotationProcessor libs.logging
+    annotationProcessor libs.loggingAnnotations
+
+    testImplementation platform(libs.junitPlatform)
+    testImplementation libs.junitJupiter
+    testImplementation libs.assertjCore
+
+    testImplementation "org.hibernate.orm:hibernate-testing:7.0.0-DROP-HBM"
+
+    testRuntimeOnly libs.log4j2
+}
+
+
+test {
+    useJUnitPlatform()
+}
+
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Compilation
+
+tasks.register('compile') {
+    dependsOn compileJava
+    dependsOn processResources
+    dependsOn compileTestJava
+    dependsOn processTestResources
+}
+
+tasks.withType( JavaCompile ).configureEach {
+    options.encoding = 'UTF-8'
+    options.warnings false
+    options.fork = true
+    options.forkOptions.memoryMaximumSize = '896m'
+
+    options.compilerArgs += [
+            // disable adding @Generated annotation in the logger impls to make
+            // the logging annotation processor create the same sources each time.
+            "-Aorg.jboss.logging.tools.addGeneratedAnnotation=false"
+    ]
+}
